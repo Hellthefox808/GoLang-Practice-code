@@ -1,0 +1,33 @@
+go 1.22
+
+use (
+	./01_hello_world
+	./02_variables_and_types
+	./03_user_input
+	./04_type_conversions
+	./05_math_and_crypto
+	./06_time_handling
+	./07_pointers_and_memory
+	./08_arrays
+	./09_slices_and_internals
+	./10_maps_and_hash_tables
+	./11_structs_and_composition
+	./12_conditionals
+	./13_switch_control
+	./14_loops_and_iterations
+	./15_functions_and_variadics
+	./16_methods_and_interfaces
+	./17_defer_and_cleanup
+	./18_file_io_operations
+	./19_web_requests
+	./20_url_parsing
+	./21_http_verbs_and_clients
+	./22_json_handling
+	./23_modules_and_vendoring
+	./24_rest_api_gorilla_mux
+	./25_mongodb_crud_api
+	./26_goroutines_concurrency
+	./27_mutex_and_waitgroups
+	./28_channels_and_select
+	./mock_server
+)

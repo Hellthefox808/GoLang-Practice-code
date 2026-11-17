@@ -1,0 +1,48 @@
+# Go binaries and builds
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+bin/
+dist/
+
+# Architecture-specific executables
+mytime
+mymodules
+buildapi
+main
+
+# Go workspace and cache
+.cache/
+vendor/modules.txt
+
+# Environment and secrets
+.env
+.env.*
+*.local
+
+# IDE and OS metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.kilocode/
+.kilo/
+.deep-copilot/
+.llm-guardrail/
+*.swp
+*~
+
+# Test coverage and profiling
+*.coverprofile
+*.coverage
+profile.pprof
+trace.out
+
+# Runtime temporary files
+*.tmp
+mylcogofile.txt
+test_temp_*.txt
