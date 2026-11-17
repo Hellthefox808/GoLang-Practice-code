@@ -6,27 +6,64 @@
 
 ---
 
-## 1. Overview
-A Goroutine is an extremely lightweight thread of execution managed by the Go runtime, not the operating system kernel.
+## 1. Overview & Scheduler Mechanics
+Goroutines are cooperative, lightweight user-space threads managed entirely by the Go runtime scheduler.
+
+### Goroutine vs. Operating System Thread:
+| Attribute | Goroutine (`G`) | OS Thread (`M`) |
+|---|---|---|
+| **Initial Stack Size** | **2 KB** (dynamic grow/shrink) | **1 MB – 8 MB** (fixed) |
+| **Creation Overhead** | ~few nanoseconds | ~1–2 microseconds |
+| **Context Switch Cost** | User-space (~10–20 ns) | Kernel transition (~1000–1500 ns) |
+| **Scalability** | Millions per process | Thousands per process |
 
 ---
 
-## 2. The M:N Scheduler Architecture
-- **G (Goroutine):** Contains stack pointer, program counter, and scheduling metadata. Starts with only 2KB of memory.
-- **M (Machine):** An OS kernel thread created and managed by the operating system.
-- **P (Processor):** A logical processor representing a context required to execute Go code (defaults to `runtime.GOMAXPROCS()`, equal to CPU core count).
+## 2. The Golden Rules of `sync.WaitGroup`
+
+```
+CORRECT:                                WRONG (RACE CONDITION):
+for _, u := range urls {                for _, u := range urls {
+    wg.Add(1)  // <--- BEFORE 'go'          go func() {
+    go func() {                                 wg.Add(1) // <--- CRASH/RACE!
+        defer wg.Done()                             defer wg.Done()
+    }()                                     }()
+}                                       }
+wg.Wait()                               wg.Wait()
+```
+
+If `wg.Add(1)` is placed inside the goroutine, `wg.Wait()` can execute on the main thread and terminate the process before the runtime scheduler even allocates CPU time to the new goroutines!
 
 ---
 
-## 3. Concurrency Hygiene Rules
-1. **`wg.Add(1)` strictly before `go func()`:** Calling `Add(1)` inside the spawned goroutine introduces an immediate race condition where `wg.Wait()` may return before the goroutine even increments the counter.
-2. **Prevent Socket/FD Leaks:** When performing concurrent HTTP requests, always read the body (`io.Copy(io.Discard, resp.Body)`) and close it. Failing to drain the body leaks OS socket file descriptors.
-3. **Bounded Semaphore Pattern:** Launching millions of unbounded goroutines to hit external systems can exhaust socket limits and trigger rate limiting. Use buffered channels (`make(chan struct{}, N)`) to enforce maximum concurrency bounds.
+## 3. Bounded Concurrency: The Counting Semaphore Pattern
+Launching unbounded goroutines against network endpoints exhausts operating system socket descriptors and triggers rate-limiting bans.
+
+A buffered channel of size `N` functions as a hardware-efficient **counting semaphore**:
+```go
+semaphore := make(chan struct{}, maxParallel) // e.g. 3
+
+for _, url := range urls {
+    wg.Add(1)
+    go func(target string) {
+        semaphore <- struct{}{}        // Acquire token (blocks if 3 workers are active)
+        defer func() {
+            <-semaphore                // Release token
+            wg.Done()
+        }()
+
+        probe(target)
+    }(url)
+}
+wg.Wait()
+```
 
 ---
 
-## 4. How to Run & Verify
+## 4. Verification & Testing
 ```bash
 go run main.go
 go test -v ./...
+# Verify data race freedom
+go test -race ./...
 ```

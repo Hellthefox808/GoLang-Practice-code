@@ -6,22 +6,62 @@
 
 ---
 
-## 1. Overview
-Go rejects classical object-oriented class hierarchies (`extends`, `super`, virtual method tables). Instead, Go embraces **Composition over Inheritance** through anonymous struct embedding and field promotion.
+## 1. Overview & Architectural Philosophy
+Go deliberately rejects classical Object-Oriented inheritance (`extends`, `super`, virtual method tables). Instead, Go embraces **Composition over Inheritance** through struct embedding and field promotion.
 
 ---
 
-## 2. Key Paradigms
-1. **Struct Embedding:**
-   Placing an un-named struct type inside another struct automatically promotes all fields and methods of the embedded type to the outer struct.
-2. **Constructors as Pure Functions:**
-   Because Go lacks automatic constructor methods, the convention is `New<Type>(args...) (*<Type>, error)`. This ensures invariants and validation rules are satisfied before memory references escape.
-3. **Hardware Memory Alignment (Padding):**
-   CPUs read memory in word boundaries (8 bytes on 64-bit systems). Misaligned fields force the compiler to inject zero-padding bytes. Arranging fields in decreasing order of byte size (e.g., 8-byte types first, followed by 4, 2, and 1-byte types) significantly reduces memory footprints in large data pipelines.
+## 2. Struct Embedding & Method Promotion
+When a struct type is embedded anonymously inside another struct, all of its fields and methods are automatically promoted to the outer struct:
+
+```go
+type BaseEntity struct {
+    ID        string
+    CreatedAt time.Time
+}
+
+type User struct {
+    BaseEntity // Embedded struct (Composition)
+    Email      string
+}
+```
+
+Promoted fields can be accessed directly:
+```go
+u := User{BaseEntity: BaseEntity{ID: "usr_101"}}
+fmt.Println(u.ID) // Direct access without u.BaseEntity.ID
+```
 
 ---
 
-## 3. How to Run & Verify
+## 3. Hardware Memory Alignment & Struct Padding
+
+CPUs read and write memory in discrete word boundaries (8 bytes on 64-bit platforms). When struct fields are ordered haphazardly, the compiler is forced to inject zero-padding bytes to align memory addresses.
+
+### Unoptimized Struct (24 Bytes)
+```go
+type Unoptimized struct {
+    A bool  // 1 byte  + 7 bytes padding
+    B int64 // 8 bytes (aligned at offset 8)
+    C bool  // 1 byte  + 7 bytes padding
+} // Total: 24 bytes
+```
+
+### Optimized Struct (16 Bytes — 33% Memory Reduction)
+```go
+type Optimized struct {
+    B int64 // 8 bytes (offset 0)
+    A bool  // 1 byte  (offset 8)
+    C bool  // 1 byte  (offset 9)
+            // + 6 bytes trailing padding to round to word boundary
+} // Total: 16 bytes
+```
+
+**Rule of Thumb:** Order struct fields from largest byte size to smallest (e.g., `int64`, `float64`, `pointers` first -> `int32`, `float32` -> `int16` -> `bool`, `byte`).
+
+---
+
+## 4. Verification & Testing
 ```bash
 go run main.go
 go test -v ./...

@@ -6,31 +6,87 @@
 
 ---
 
-## 1. Overview
-A slice is a dynamically sized view into the elements of an underlying array. Under the hood, a slice is a 24-byte (on 64-bit architecture) struct header defined conceptually as:
+## 1. Overview & Slice Anatomy
+While arrays have fixed compile-time lengths, slices are dynamically sized views over underlying backing arrays. In Go, a slice header is a 24-byte structure on 64-bit systems (`SliceHeader`):
+
+```
++-----------------------------------------------+
+|                  SliceHeader                  |
++-------------------+-------------+-------------+
+| Data Pointer (8B) | Length (8B) | Capacity(8B)|
++-------------------+-------------+-------------+
+         |
+         v
++--------+--------+--------+--------+--------+
+|  elem0 |  elem1 |  elem2 |  elem3 |  elem4 | Backing Array in Memory
++--------+--------+--------+--------+--------+
+```
+
+- **`Data`:** Pointer to the first element in the backing array that belongs to the slice.
+- **`Len`:** Number of elements currently accessible through the slice (`len(s)`).
+- **`Cap`:** Maximum number of elements from the slice's start to the end of the backing array (`cap(s)`).
+
+---
+
+## 2. Capacity Growth Dynamics
+When `append()` exceeds the current `cap`:
+1. The Go runtime allocates a **new, larger contiguous backing array**.
+2. Existing elements are copied to the new memory arena.
+3. The slice's `Data` pointer is updated to the new backing array.
+
+### Growth Scaling Algorithm (Modern Go):
+- For small slices (< 256 elements), capacity approximately **doubles** ($2\times$).
+- For larger slices, capacity grows smoothly at approximately **$1.25\times$ + threshold smoothing**, reducing memory fragmentation.
+
+---
+
+## 3. Sub-Slicing Hazards & Memory Leaks
+
+### Hazard 1: Shared Backing Array Mutation
 ```go
-type SliceHeader struct {
-    Data uintptr // pointer to backing array
-    Len  int     // current count of elements
-    Cap  int     // maximum capacity before reallocation
+orig := []string{"A", "B", "C"}
+sub := orig[1:3]
+sub[0] = "MUTATED"
+// orig[1] is now "MUTATED" because both headers point to the same array!
+```
+
+### Hazard 2: Memory Retention Leak
+If a function returns a tiny 2-byte subslice of a 100MB backing array:
+```go
+func LeakyFunction() []byte {
+    hugePayload := load100MBFile()
+    return hugePayload[0:2] // The ENTIRE 100MB array cannot be GC'd!
+}
+```
+**Fix:** Use `slices.Clone()` or `copy()` to detach the slice:
+```go
+func CleanFunction() []byte {
+    hugePayload := load100MBFile()
+    return slices.Clone(hugePayload[0:2]) // Detached 2-byte allocation
 }
 ```
 
 ---
 
-## 2. Growth Dynamics
-When `append()` exceeds `cap`, the Go runtime allocates a new, larger backing array, copies the existing elements into it, and updates the pointer.
-- For small slices (< 256 elements in modern Go), capacity typically doubles.
-- For larger slices, growth scales smoothly around `1.25x` to balance allocation speed with memory fragmentation.
+## 4. Deleting Slice Elements
+
+### Method A: Order-Preserving ($O(N)$)
+```go
+// Shifts elements after index left by 1 position
+slice = append(slice[:index], slice[index+1:]...)
+```
+
+### Method B: Unordered Fast Delete ($O(1)$)
+```go
+// Replace target with the last element, then truncate length
+lastIdx := len(slice) - 1
+slice[index] = slice[lastIdx]
+slice = slice[:lastIdx]
+```
 
 ---
 
-## 3. Sub-Slicing Hazards
-Creating a sub-slice (`s[a:b]`) creates a new slice header that still points to the **same backing array**. Modifying elements in the sub-slice directly modifies the original slice unless cloned via `slices.Clone()` or copied via `copy()`.
-
----
-
-## 4. How to Run & Verify
+## 5. Verification & Testing
 ```bash
 go run main.go
 go test -v ./...
